@@ -1,5 +1,5 @@
 # 1 = executar / 0 = parado
-info=0
+info=1
 dump=0
 ls=0
 ls_path=
