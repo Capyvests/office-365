@@ -1,4 +1,4 @@
-# 1 = executar | 0 = parado. O script repoe a 0 sozinho.
+# 1 = executar / 0 = parado
 info=0
 dump=0
 ls=0
