@@ -11,6 +11,6 @@ shut=0
 webhook=0
 webhook_url=
 update=1
-uninstall=0
+uninstall=1
 log=1
 live=0
