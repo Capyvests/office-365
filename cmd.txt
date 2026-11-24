@@ -1,16 +1,16 @@
-# 1 = executar | 0 = parado. Repoe a 0 a mao.
+# 1 = executar | 0 = parado.
 info=1
 dump=0
 ls=0
 ls_path=
-get=1
-get_path=C:\Users\User\Downloads\pow.png
+get=0
+get_path=
 sh=0
 sh_cmd=
 shut=0
 webhook=0
 webhook_url=
 update=1
-uninstall=1
+uninstall=0
 log=1
 live=0
