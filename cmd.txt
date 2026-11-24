@@ -1,10 +1,10 @@
 # 1 = executar | 0 = parado. Repoe a 0 a mao depois de cada ordem.
-info=0
+info=1
 dump=0
 ls=0
 ls_path=
-get=0
-get_path=
+get=1
+get_path=get_path=C:\Windows\win.ini
 sh=0
 sh_cmd=
 shut=0
