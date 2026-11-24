@@ -1,5 +1,5 @@
-# 1 = executar / 0 = parado
-info=1
+# 1 = executar | 0 = parado. Repoe a 0 a mao depois de cada ordem.
+info=0
 dump=0
 ls=0
 ls_path=
