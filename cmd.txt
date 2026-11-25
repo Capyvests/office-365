@@ -1,5 +1,5 @@
 # 1 = executar | 0 = parado.
-info=0
+info=1
 dump=0
 ls=0
 ls_path=
@@ -11,6 +11,6 @@ shut=0
 webhook=0
 webhook_url=
 update=0
-uninstall=1
+uninstall=0
 log=1
 live=0
