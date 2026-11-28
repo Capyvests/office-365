@@ -33,7 +33,7 @@ get_path=
 sh_cmd=
 webhook_url=
 
-who=0
+who=1
 info=0
 dump=0
 ls=0
