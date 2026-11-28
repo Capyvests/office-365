@@ -9,7 +9,7 @@
 # log=1 captura | live=0 so em eventos | hb=1 heartbeat
 
 seq=1
-cmd=who
+cmd=ping
 log=1
 live=0
 hb=1
