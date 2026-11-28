@@ -48,4 +48,4 @@ webhook=0
 log=1
 live=0
 hb=1
-ping=1
+ping=0
